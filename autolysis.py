@@ -1,20 +1,7 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#   "pandas",
-#   "seaborn",
-#   "matplotlib",
-#   "httpx",
-#   "chardet",
-#   "python-dotenv",
-# ]
-# ///
-
 import os
 import sys
 import pandas as pd
 import seaborn as sns
-import matplotlib
 import matplotlib.pyplot as plt
 import httpx
 import chardet
@@ -22,7 +9,7 @@ from dotenv import load_dotenv
 import argparse
 
 # Configure matplotlib backend
-matplotlib.use("Agg")
+plt.switch_backend("Agg")
 
 # Load environment variables
 load_dotenv()
@@ -41,8 +28,7 @@ def load_data(file_path):
             encoding = chardet.detect(f.read())['encoding']
         return pd.read_csv(file_path, encoding=encoding)
     except Exception as e:
-        print(f"Error loading file: {e}")
-        sys.exit(1)
+        sys.exit(f"Error loading file: {e}")
 
 def analyze_data(df):
     """Perform basic data analysis."""
@@ -59,11 +45,10 @@ def visualize_data(df, output_dir):
     numeric_columns = df.select_dtypes(include=['number']).columns
 
     for column in numeric_columns:
-        plt.figure()
         sns.histplot(df[column].dropna(), kde=True)
         plt.title(f'Distribution of {column}')
         plt.savefig(os.path.join(output_dir, f'{column}_distribution.png'))
-        plt.close()
+        plt.clf()
 
 def generate_narrative(analysis):
     """Generate narrative using LLM."""
@@ -80,13 +65,10 @@ def generate_narrative(analysis):
     try:
         response = httpx.post(API_URL, headers=headers, json=data, timeout=30.0)
         response.raise_for_status()
-        return response.json()['choices'][0]['message']['content']
-    except (httpx.HTTPStatusError, httpx.RequestError) as e:
-        print(f"HTTP error occurred: {e}")
+        return response.json().get('choices', [{}])[0].get('message', {}).get('content', "")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-
-    return "Narrative generation failed due to an error."
+        print(f"Error during narrative generation: {e}")
+        return "Narrative generation failed due to an error."
 
 def save_narrative(narrative, output_dir):
     """Save the generated narrative to a README file."""
@@ -105,18 +87,17 @@ def main():
     args = parse_arguments()
 
     # Set output directory
-    if not args.output_dir:
-        args.output_dir = os.path.splitext(os.path.basename(args.file_path))[0]
-    os.makedirs(args.output_dir, exist_ok=True)
+    output_dir = args.output_dir or os.path.splitext(os.path.basename(args.file_path))[0]
+    os.makedirs(output_dir, exist_ok=True)
 
     # Process data
     df = load_data(args.file_path)
     analysis = analyze_data(df)
 
     # Generate outputs
-    visualize_data(df, args.output_dir)
+    visualize_data(df, output_dir)
     narrative = generate_narrative(analysis)
-    save_narrative(narrative, args.output_dir)
+    save_narrative(narrative, output_dir)
 
 if __name__ == "__main__":
     main()
